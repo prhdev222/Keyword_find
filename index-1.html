@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ค้นหาคำในเอกสาร</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f4f8;min-height:100vh;color:#222}
+header{background:#1a56db;color:white;padding:16px 24px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px #0003}
+header h1{font-size:1.2rem}header p{font-size:.8rem;opacity:.8}
+.container{display:flex;gap:16px;padding:20px;max-width:1400px;margin:0 auto}
+.sidebar{width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:14px}
+.card{background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px #0001}
+.card-title{font-size:.75rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.upload-zone{border:2px dashed #cbd5e1;border-radius:10px;padding:24px 12px;text-align:center;cursor:pointer;transition:all .2s;background:#f8fafc;position:relative}
+.upload-zone:hover{border-color:#1a56db;background:#eff6ff}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-zone .icon{font-size:2.5rem}.upload-zone p{font-size:.82rem;color:#64748b;margin-top:6px}
+.file-name{font-size:.8rem;color:#1a56db;font-weight:600;margin-top:8px;word-break:break-all}
+.prog-wrap{height:6px;background:#e2e8f0;border-radius:3px;margin-top:10px;overflow:hidden;display:none}
+.prog-fill{height:100%;background:#1a56db;transition:width .3s}
+.search-row{display:flex;gap:8px}
+.search-input{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:9px 12px;font-size:.9rem;outline:none;transition:border-color .2s}
+.search-input:focus{border-color:#1a56db}
+.btn-search{background:#1a56db;color:white;border:none;border-radius:8px;padding:9px 16px;font-size:.85rem;font-weight:700;cursor:pointer}
+.btn-search:disabled{background:#94a3b8;cursor:not-allowed}
+.options{display:flex;gap:12px;margin-top:8px}
+.opt-label{display:flex;align-items:center;gap:5px;font-size:.78rem;color:#64748b;cursor:pointer}
+.opt-label input{accent-color:#1a56db}
+.results-scroll{max-height:380px;overflow-y:auto}
+.result-count{font-size:.8rem;color:#64748b;margin-bottom:8px}
+.result-count b{color:#16a34a}
+.match-card{border:1px solid #e2e8f0;border-radius:8px;padding:9px 12px;margin-bottom:6px;cursor:pointer;transition:all .15s}
+.match-card:hover,.match-card.active{border-color:#1a56db;background:#eff6ff}
+.match-num{font-size:.7rem;color:#94a3b8;margin-bottom:3px}
+.match-text{font-size:.8rem;color:#64748b;line-height:1.5;word-break:break-word}
+.match-text mark,.viewer-body mark{background:#fef08a;color:#78350f;border-radius:2px;padding:0 2px;font-weight:700}
+.viewer-wrap{flex:1;display:flex;flex-direction:column;min-width:0}
+.viewer-toolbar{background:white;border-radius:12px 12px 0 0;padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;box-shadow:0 1px 4px #0001}
+.btn-nav{border:1px solid #e2e8f0;background:white;border-radius:6px;padding:5px 12px;font-size:.8rem;cursor:pointer;color:#374151}
+.btn-nav:hover:not(:disabled){border-color:#1a56db;color:#1a56db}
+.btn-nav:disabled{color:#cbd5e1;cursor:not-allowed}
+.btn-clear{border:1px solid #fca5a5;background:#fff;color:#ef4444;border-radius:6px;padding:5px 12px;font-size:.8rem;cursor:pointer;display:none}
+.match-counter{margin-left:auto;font-size:.8rem;color:#64748b;display:none}
+.match-counter b{color:#f59e0b;font-weight:700}
+.viewer-body{background:white;border-radius:0 0 12px 12px;padding:32px 40px;min-height:500px;overflow-y:auto;box-shadow:0 1px 4px #0001;font-size:.9rem;line-height:1.85;white-space:pre-wrap;word-break:break-word;color:#374151;max-height:calc(100vh - 200px)}
+.viewer-body mark.active-mark{background:#f59e0b;color:white;outline:2px solid #d97706}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;color:#94a3b8;gap:10px}
+.empty-state .big{font-size:4rem;opacity:.3}
+@media(max-width:700px){.container{flex-direction:column}.sidebar{width:100%}.viewer-body{padding:16px;max-height:50vh}}
+</style>
+</head>
+<body>
+<header>
+  <div>🔍</div>
+  <div><h1>ค้นหาคำสำคัญในเอกสาร</h1><p>รองรับไฟล์ .docx (Word) และ .pdf</p></div>
+</header>
+<div class="container">
+  <div class="sidebar">
+    <div class="card">
+      <div class="card-title">📂 เลือกไฟล์</div>
+      <div class="upload-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".docx,.pdf"/>
+        <div class="icon">📄</div>
+        <p>คลิกเลือก หรือลากไฟล์มาวาง</p>
+        <p style="font-size:.7rem;margin-top:2px">.docx / .pdf เท่านั้น</p>
+        <div class="file-name" id="fileName"></div>
+      </div>
+      <div class="prog-wrap" id="progWrap"><div class="prog-fill" id="progFill" style="width:0"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔎 คำค้นหา</div>
+      <div class="search-row">
+        <input class="search-input" id="searchInput" placeholder="พิมพ์คำค้นหา..." type="text"/>
+        <button class="btn-search" id="searchBtn" disabled>ค้น</button>
+      </div>
+      <div class="options">
+        <label class="opt-label"><input type="checkbox" id="caseSens"/> ตรงตัวพิมพ์</label>
+        <label class="opt-label"><input type="checkbox" id="wholeWd"/> คำเต็ม</label>
+      </div>
+    </div>
+    <div class="card" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+      <div class="card-title">📋 ผลการค้นหา</div>
+      <div class="result-count" id="resultCount" style="display:none"></div>
+      <div class="results-scroll" id="resultsList">
+        <div class="empty-state"><div class="big">📝</div><div style="font-size:.82rem;text-align:center">อัปโหลดไฟล์แล้วค้นหาคำ</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="viewer-wrap">
+    <div class="viewer-toolbar">
+      <button class="btn-nav" id="prevBtn" disabled>◀ ก่อนหน้า</button>
+      <button class="btn-nav" id="nextBtn" disabled>ถัดไป ▶</button>
+      <button class="btn-clear" id="clearBtn">✕ ล้าง</button>
+      <div class="match-counter" id="matchCounter">ผลที่ <b id="curNum">-</b> / <b id="totNum">-</b></div>
+    </div>
+    <div class="viewer-body" id="viewerBody">
+      <div class="empty-state"><div class="big">📂</div><div style="font-size:.85rem">อัปโหลดไฟล์เพื่อดูเนื้อหา</div></div>
+    </div>
+  </div>
+</div>
+<script>
+if(typeof pdfjsLib!=='undefined'){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}
+let fullText='',marks=[],cur=0,total=0;
+const $=id=>document.getElementById(id);
+const fileInput=$('fileInput'),dropZone=$('dropZone'),fileName=$('fileName'),searchBtn=$('searchBtn'),
+      searchInput=$('searchInput'),viewerBody=$('viewerBody'),progWrap=$('progWrap'),progFill=$('progFill'),
+      resultsList=$('resultsList'),resultCount=$('resultCount'),prevBtn=$('prevBtn'),nextBtn=$('nextBtn'),
+      clearBtn=$('clearBtn'),matchCounter=$('matchCounter');
+
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.style.borderColor='#1a56db';});
+dropZone.addEventListener('dragleave',()=>dropZone.style.borderColor='');
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.style.borderColor='';if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
+fileInput.addEventListener('change',()=>{if(fileInput.files[0])handleFile(fileInput.files[0]);});
+
+function setProgress(n){progWrap.style.display='block';progFill.style.width=n+'%';}
+
+async function handleFile(file){
+  fileName.textContent=file.name;fullText='';clearSearch();setProgress(10);
+  viewerBody.innerHTML='<div class="empty-state"><div style="font-size:2rem">⏳</div><div>กำลังโหลด...</div></div>';
+  try{
+    const name=file.name.toLowerCase();
+    if(name.endsWith('.pdf')){
+      if(typeof pdfjsLib==='undefined')throw new Error('ไม่สามารถโหลด PDF.js — กรุณาตรวจสอบอินเทอร์เน็ต');
+      const buf=await file.arrayBuffer();
+      const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+      let t='';
+      for(let i=1;i<=pdf.numPages;i++){
+        setProgress(10+Math.floor(i/pdf.numPages*80));
+        const page=await pdf.getPage(i);
+        const content=await page.getTextContent();
+        t+='\n\n─── หน้า '+i+' ───\n\n'+content.items.map(x=>x.str).join(' ');
+      }
+      fullText=t;
+    } else if(name.endsWith('.docx')){
+      if(typeof mammoth==='undefined')throw new Error('ไม่สามารถโหลด mammoth.js — กรุณาตรวจสอบอินเทอร์เน็ต');
+      const buf=await file.arrayBuffer();setProgress(50);
+      const result=await mammoth.extractRawText({arrayBuffer:buf});
+      fullText=result.value;setProgress(90);
+    } else {
+      alert('รองรับเฉพาะ .docx และ .pdf');progWrap.style.display='none';return;
+    }
+    setProgress(100);setTimeout(()=>progWrap.style.display='none',600);
+    viewerBody.textContent=fullText;searchBtn.disabled=false;
+  } catch(e){
+    viewerBody.innerHTML='<div class="empty-state"><div>❌</div><div style="font-size:.85rem;color:#ef4444">'+e.message+'</div></div>';
+    progWrap.style.display='none';
+  }
+}
+
+searchBtn.addEventListener('click',doSearch);
+searchInput.addEventListener('keydown',e=>e.key==='Enter'&&doSearch());
+clearBtn.addEventListener('click',clearSearch);
+prevBtn.addEventListener('click',()=>navigate(-1));
+nextBtn.addEventListener('click',()=>navigate(1));
+
+function doSearch(){
+  const q=searchInput.value.trim();if(!q||!fullText)return;
+  const cs=$('caseSens').checked,ww=$('wholeWd').checked;
+  let pat=q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  if(ww)pat='\\b'+pat+'\\b';
+  let re;try{re=new RegExp(pat,cs?'g':'gi');}catch{return;}
+  const found=[...fullText.matchAll(re)];
+  total=found.length;cur=0;
+  if(total===0){resultCount.style.display='block';resultCount.innerHTML='ไม่พบ <b>"'+escH(q)+'"</b>';resultsList.innerHTML='';return;}
+  let html='',last=0;
+  found.forEach((m,i)=>{
+    html+=escH(fullText.slice(last,m.index));
+    html+='<mark id="mk'+i+'"'+(i===0?' class="active-mark"':'')+'>'+escH(m[0])+'</mark>';
+    last=m.index+m[0].length;
+  });
+  html+=escH(fullText.slice(last));
+  viewerBody.innerHTML=html;
+  marks=Array.from(viewerBody.querySelectorAll('mark'));
+  resultCount.style.display='block';
+  resultCount.innerHTML='พบ <b>'+total+'</b> รายการ';
+  const ctx=65;let listHTML='';
+  found.forEach((m,i)=>{
+    const s=Math.max(0,m.index-ctx),e=Math.min(fullText.length,m.index+m[0].length+ctx);
+    listHTML+='<div class="match-card" id="rc'+i+'" onclick="goTo('+i+')">'
+      +'<div class="match-num">#'+(i+1)+'</div>'
+      +'<div class="match-text">'+(s>0?'…':'')+escH(fullText.slice(s,m.index))
+      +'<mark>'+escH(m[0])+'</mark>'+escH(fullText.slice(m.index+m[0].length,e))+(e<fullText.length?'…':'')
+      +'</div></div>';
+  });
+  resultsList.innerHTML=listHTML;
+  prevBtn.disabled=false;nextBtn.disabled=false;
+  clearBtn.style.display='inline-block';matchCounter.style.display='block';
+  updateCounter();scrollToMark(0);
+}
+
+function goTo(idx){
+  marks[cur]&&marks[cur].classList.remove('active-mark');
+  document.getElementById('rc'+cur)&&document.getElementById('rc'+cur).classList.remove('active');
+  cur=idx;
+  marks[cur]&&marks[cur].classList.add('active-mark');
+  const rc=document.getElementById('rc'+cur);
+  rc&&(rc.classList.add('active'),rc.scrollIntoView({block:'nearest',behavior:'smooth'}));
+  updateCounter();scrollToMark(cur);
+}
+
+function navigate(d){
+  const next=cur+d;
+  if(next>=0&&next<total)goTo(next);
+}
+
+function scrollToMark(i){const el=document.getElementById('mk'+i);el&&el.scrollIntoView({block:'center',behavior:'smooth'});}
+function updateCounter(){$('curNum').textContent=cur+1;$('totNum').textContent=total;}
+function clearSearch(){
+  if(fullText)viewerBody.textContent=fullText;
+  resultsList.innerHTML='<div class="empty-state"><div class="big">📝</div><div style="font-size:.82rem;text-align:center">อัปโหลดไฟล์แล้วค้นหาคำ</div></div>';
+  resultCount.style.display='none';clearBtn.style.display='none';matchCounter.style.display='none';
+  prevBtn.disabled=true;nextBtn.disabled=true;marks=[];total=0;cur=0;
+}
+function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+</script>
+</body>
+</html>
